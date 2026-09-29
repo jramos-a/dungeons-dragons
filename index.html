@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1a1420">
+<title>Diario de Aventurero</title>
+<style>
+:root{--bg:#1a1420;--card:#261d2e;--line:#3b2d47;--txt:#f0e6d6;--dim:#a99bb5;--acc:#d9a441;--red:#c4463d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:16px system-ui,sans-serif;padding-bottom:76px}
+h1,h2{font-family:Georgia,serif;color:var(--acc);margin:0 0 10px}
+input,textarea,button{font:inherit;color:var(--txt);background:#160f1b;border:1px solid var(--line);border-radius:8px;padding:10px;width:100%}
+textarea{min-height:220px}
+button{width:auto;background:var(--card);cursor:pointer}
+button.p{background:var(--acc);color:#1a1420;font-weight:700;border:0}
+button.d{color:var(--red)}
+.wrap{max-width:560px;margin:auto;padding:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.row>*{min-width:0}
+.g{display:grid;gap:8px;grid-template-columns:repeat(3,1fr)}
+.lbl{font-size:12px;color:var(--dim);text-transform:uppercase}
+.sm{width:44px;padding:10px 0;text-align:center;flex:none}
+.num{text-align:center}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#100a14;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;border-radius:0;background:none;color:var(--dim);padding:14px 4px}
+nav button.on{color:var(--acc)}
+.top{display:flex;gap:8px;align-items:center;padding:calc(env(safe-area-inset-top) + 8px) 12px 8px;max-width:560px;margin:auto}
+.big{font-size:56px;text-align:center;font-family:Georgia,serif;color:var(--acc)}
+.chip{display:inline-block;padding:4px 10px;margin:3px;border:1px solid var(--line);border-radius:99px;font-size:14px}
+.mod{text-align:center;color:var(--dim);font-size:13px}
+#st{font-size:12px;color:var(--dim);white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+let ch, tab = 'ficha', timer, log = [], last = null, dn = 1, dm = 0;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const C = () => ch;
+const blank = name => ({name,cls:'',lvl:1,hp:10,hpMax:10,ac:10,
+  coins:{pc:0,pp:0,pe:0,po:0,ppt:0},stats:{FUE:10,DES:10,CON:10,INT:10,SAB:10,CAR:10},
+  items:[],counters:[],notes:''});
+const mod = v => Math.floor((v - 10) / 2);
+const sgn = n => (n >= 0 ? '+' : '') + n;
+
+async function api(m, p, b) {
+  const r = await fetch('/api/' + p, { method: m, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.tk || '') }, body: b ? JSON.stringify(b) : undefined });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(d.error || 'Error'); e.code = r.status; throw e; }
+  return d;
+}
+
+// ---------- Acceso ----------
+function authView(msg = '') {
+  $('#app').innerHTML = `<div class="wrap"><h1>⚔️ Diario de Aventurero</h1><div class="card">
+  <input id="us" placeholder="Usuario" autocapitalize="none" autocomplete="username"><br><br>
+  <input id="pw" type="password" placeholder="Contraseña" autocomplete="current-password"><br><br>
+  <input id="pj" placeholder="Nombre del personaje (solo al crear cuenta)"><br><br>
+  <div class="row"><button class="p" onclick="auth('login')">Entrar</button><button onclick="auth('register')">Crear cuenta</button></div>
+  <div style="color:var(--red)">${esc(msg)}</div></div></div>`;
+}
+async function auth(kind) {
+  const user = $('#us').value, pass = $('#pw').value, name = $('#pj').value.trim();
+  if (kind === 'register' && !name) return authView('Escribe el nombre de tu personaje');
+  try {
+    const { token } = await api('POST', kind, { user, pass, char: blank(name) });
+    localStorage.tk = token; boot();
+  } catch (e) { authView(e.message); }
+}
+function logout() { localStorage.removeItem('tk'); ch = null; authView(); }
+async function boot() {
+  try { ch = (await api('GET', 'char')).char; render(); }
+  catch (e) { e.code === 401 || !localStorage.tk ? authView() : authView(e.message); }
+}
+
+// ---------- Guardado ----------
+function save() {
+  $('#st').textContent = '…';
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    try { await api('PUT', 'char', ch); $('#st').textContent = '✓ guardado'; }
+    catch { $('#st').textContent = '⚠️ sin conexión'; }
+  }, 600);
+}
+function upd(k, v, after) { ch[k] = v; save(); after && after(); }
+function updIn(o, k, v) { ch[o][k] = v; save(); }
+function bump(o, k, d) { ch[o][k] = (+ch[o][k] || 0) + d; save(); render(); }
+
+// ---------- Vistas ----------
+function render() {
+  $('#app').innerHTML = `
+  <div class="top"><b style="flex:1;font-family:Georgia,serif;color:var(--acc);font-size:20px">${esc(ch.name)}</b>
+  <span id="st"></span><button onclick="logout()">Salir</button></div>
+  <div class="wrap">${{ ficha, inv, dados, notas }[tab]()}</div>
+  <nav>${[['ficha','🧙 Ficha'],['inv','🎒 Inventario'],['dados','🎲 Dados'],['notas','📜 Notas']].map(([k, l]) => `<button class="${tab == k ? 'on' : ''}" onclick="tab='${k}';render()">${l}</button>`).join('')}</nav>`;
+}
+function ficha() {
+  const c = ch, n = { pc: 'Cobre', pp: 'Plata', pe: 'Electrum', po: 'Oro', ppt: 'Platino' };
+  return `<div class="card"><input value="${esc(c.name)}" oninput="upd('name',this.value)" style="font-size:20px" placeholder="Nombre">
+  <div class="row" style="margin-top:8px"><input value="${esc(c.cls)}" oninput="upd('cls',this.value)" placeholder="Raza / clase"><input class="num" type="number" style="width:80px" value="${c.lvl}" oninput="upd('lvl',+this.value)"></div>
+  <div class="g"><div><div class="lbl">PV</div><input class="num" type="number" value="${c.hp}" oninput="upd('hp',+this.value)"></div>
+  <div><div class="lbl">PV máx</div><input class="num" type="number" value="${c.hpMax}" oninput="upd('hpMax',+this.value)"></div>
+  <div><div class="lbl">CA</div><input class="num" type="number" value="${c.ac}" oninput="upd('ac',+this.value)"></div></div>
+  <div class="row" style="margin-top:8px"><button onclick="upd('hp',ch.hp-1,render)">−1 PV</button><button onclick="upd('hp',ch.hp+1,render)">+1 PV</button><button onclick="upd('hp',ch.hpMax,render)">Descanso</button></div></div>
+  <div class="card"><h2>Monedas</h2>${Object.keys(n).map(k => `<div class="row"><span style="width:70px">${n[k]}</span>
+  <button class="sm" onclick="bump('coins','${k}',-1)">−</button><input class="num" type="number" value="${c.coins[k]}" oninput="updIn('coins','${k}',+this.value)">
+  <button class="sm" onclick="bump('coins','${k}',1)">+</button><button class="sm" onclick="bump('coins','${k}',10)">+10</button></div>`).join('')}</div>
+  <div class="card"><h2>Atributos</h2><div class="g">${Object.keys(c.stats).map(k => `<div><div class="lbl">${k}</div>
+  <input class="num" type="number" value="${c.stats[k]}" oninput="updIn('stats','${k}',+this.value);this.nextElementSibling.textContent=sgn(mod(+this.value))"><div class="mod">${sgn(mod(c.stats[k]))}</div></div>`).join('')}</div></div>`;
+}
+function inv() {
+  const c = ch;
+  return `<div class="card"><h2>Objetos</h2>${c.items.map((it, i) => `<div style="margin-bottom:10px"><div class="row" style="margin:0 0 4px">
+  <input value="${esc(it.n)}" placeholder="Objeto" oninput="ch.items[${i}].n=this.value;save()">
+  <button class="sm" onclick="iq(${i},-1)">−</button><input class="num" style="width:56px;flex:none" type="number" value="${it.q}" oninput="ch.items[${i}].q=+this.value;save()"><button class="sm" onclick="iq(${i},1)">+</button>
+  <button class="sm d" onclick="ch.items.splice(${i},1);save();render()">✕</button></div>
+  <input value="${esc(it.note)}" placeholder="Notas (peso, efecto, daño…)" oninput="ch.items[${i}].note=this.value;save()"></div>`).join('')}
+  <button class="p" onclick="ch.items.push({n:'',q:1,note:''});save();render()">＋ Añadir objeto</button></div>
+  <div class="card"><h2>Contadores libres</h2><div class="lbl" style="margin-bottom:8px">Pociones, espacios de conjuro, flechas, lo que quieras</div>
+  ${c.counters.map((k, i) => `<div class="row"><input value="${esc(k.n)}" placeholder="Nombre" oninput="ch.counters[${i}].n=this.value;save()">
+  <button class="sm" onclick="cq(${i},-1)">−</button><input class="num" style="width:56px;flex:none" type="number" value="${k.v}" oninput="ch.counters[${i}].v=+this.value;save()"><button class="sm" onclick="cq(${i},1)">+</button>
+  <button class="sm d" onclick="ch.counters.splice(${i},1);save();render()">✕</button></div>`).join('')}
+  <button class="p" onclick="ch.counters.push({n:'',v:0});save();render()">＋ Añadir contador</button></div>`;
+}
+const iq = (i, d) => { ch.items[i].q = (+ch.items[i].q || 0) + d; save(); render(); };
+const cq = (i, d) => { ch.counters[i].v = (+ch.counters[i].v || 0) + d; save(); render(); };
+function notas() {
+  return `<div class="card"><h2>Notas</h2><textarea oninput="upd('notes',this.value)" placeholder="Historia, misiones, PNJ, hechizos, lo que sea…">${esc(ch.notes)}</textarea></div>`;
+}
+
+// ---------- Dados ----------
+function dados() {
+  return `<div class="card"><div class="big">${last ? last.total : '–'}</div>
+  <div class="mod">${last ? esc(last.txt) : 'Tira algo'}</div></div>
+  <div class="card"><div class="row"><div style="flex:1"><div class="lbl">Cantidad</div><input class="num" type="number" min="1" value="${dn}" oninput="dn=+this.value||1"></div>
+  <div style="flex:1"><div class="lbl">Modificador</div><input class="num" type="number" value="${dm}" oninput="dm=+this.value||0"></div></div>
+  <div class="g">${[4,6,8,10,12,20,100].map(s => `<button class="p" onclick="roll(dn,${s},dm)">d${s}</button>`).join('')}</div>
+  <div class="row" style="margin-top:8px"><button onclick="adv(1)">d20 Ventaja</button><button onclick="adv(-1)">d20 Desventaja</button></div>
+  <div class="row"><input id="ex" placeholder="Libre: 2d6+3" onkeydown="if(event.key=='Enter')free()"><button onclick="free()">Tirar</button></div></div>
+  <div class="card"><h2>Historial</h2>${log.map(l => `<span class="chip">${esc(l)}</span>`).join('') || '<span class="mod">Vacío</span>'}</div>`;
+}
+const d = s => 1 + Math.floor(Math.random() * s);
+function done(total, txt) { last = { total, txt }; log.unshift(`${total} · ${txt}`); log = log.slice(0, 30); render(); }
+function roll(n, s, m) {
+  n = Math.min(Math.max(n, 1), 100);
+  const r = Array.from({ length: n }, () => d(s)), t = r.reduce((a, b) => a + b, 0) + m;
+  done(t, `${n}d${s}${m ? sgn(m) : ''} [${r.join(',')}]`);
+}
+function adv(k) {
+  const a = d(20), b = d(20), p = k > 0 ? Math.max(a, b) : Math.min(a, b);
+  done(p + dm, `d20 ${k > 0 ? 'ventaja' : 'desventaja'} [${a},${b}]${dm ? sgn(dm) : ''}`);
+}
+function free() {
+  const m = $('#ex').value.replace(/\s/g, '').match(/^(\d*)d(\d+)([+-]\d+)?$/i);
+  if (!m) return alert('Formato: 2d6+3');
+  roll(+m[1] || 1, +m[2], +m[3] || 0);
+}
+boot();
+</script>
+</body>
+</html>

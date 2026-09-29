@@ -1,0 +1,5 @@
+{
+  "name": "diario-aventurero",
+  "private": true,
+  "engines": { "node": ">=18" }
+}
