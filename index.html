@@ -72,6 +72,7 @@ async function auth(kind) {
 }
 function logout() { localStorage.removeItem('tk'); ch = null; authView(); }
 async function boot() {
+  if (!localStorage.tk) return authView();
   try { ch = (await api('GET', 'char')).char; render(); }
   catch (e) { e.code === 401 || !localStorage.tk ? authView() : authView(e.message); }
 }
