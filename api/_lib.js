@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const URL_ = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const URL_ = (process.env.SUPABASE_URL || '').trim().replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
 const KEY = process.env.SUPABASE_SERVICE_KEY;
 const DAYS = 60;
 

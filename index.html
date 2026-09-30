@@ -57,16 +57,15 @@ async function api(m, p, b) {
 function authView(msg = '') {
   $('#app').innerHTML = `<div class="wrap"><h1>⚔️ Diario de Aventurero</h1><div class="card">
   <input id="us" placeholder="Usuario" autocapitalize="none" autocomplete="username"><br><br>
-  <input id="pw" type="password" placeholder="Contraseña" autocomplete="current-password"><br><br>
   <input id="pj" placeholder="Nombre del personaje (solo al crear cuenta)"><br><br>
   <div class="row"><button class="p" onclick="auth('login')">Entrar</button><button onclick="auth('register')">Crear cuenta</button></div>
   <div style="color:var(--red)">${esc(msg)}</div></div></div>`;
 }
 async function auth(kind) {
-  const user = $('#us').value, pass = $('#pw').value, name = $('#pj').value.trim();
+  const user = $('#us').value, name = $('#pj').value.trim();
   if (kind === 'register' && !name) return authView('Escribe el nombre de tu personaje');
   try {
-    const { token } = await api('POST', kind, { user, pass, char: blank(name) });
+    const { token } = await api('POST', kind, { user, char: blank(name) });
     localStorage.tk = token; boot();
   } catch (e) { authView(e.message); }
 }
