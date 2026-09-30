@@ -10,7 +10,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:16px system-ui,sans-serif;padding-bottom:76px}
 h1,h2{font-family:Georgia,serif;color:var(--acc);margin:0 0 10px}
-input,textarea,button{font:inherit;color:var(--txt);background:#160f1b;border:1px solid var(--line);border-radius:8px;padding:10px;width:100%}
+input,textarea,button,select{font:inherit;color:var(--txt);background:#160f1b;border:1px solid var(--line);border-radius:8px;padding:10px;width:100%}
 textarea{min-height:220px}
 button{width:auto;background:var(--card);cursor:pointer}
 button.p{background:var(--acc);color:#1a1420;font-weight:700;border:0}
@@ -31,10 +31,20 @@ nav button.on{color:var(--acc)}
 .chip{display:inline-block;padding:4px 10px;margin:3px;border:1px solid var(--line);border-radius:99px;font-size:14px}
 .mod{text-align:center;color:var(--dim);font-size:13px}
 #st{font-size:12px;color:var(--dim);white-space:nowrap}
+select{width:100%}
+.g2{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+.ic{border-radius:10px;overflow:hidden;margin-bottom:10px;border:1px solid var(--line);background:#2f2438}
+.ic .cb{padding:10px}
+.ic .ft{background:#3f8f3f;color:#fff;font-size:12px;font-weight:700;text-align:center;padding:4px}
+.ic.mg .ft{background:#5b4bb0}
+.ic.mg{border-color:#5b4bb0}
+#toast{display:none;position:fixed;left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));max-width:536px;margin:auto;background:var(--acc);color:#1a1420;border-radius:12px;padding:10px 14px;font-size:14px;z-index:9;box-shadow:0 4px 16px #0008}
+#toast b{font-size:26px;margin-right:8px;font-family:Georgia,serif}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="toast" onclick="this.style.display='none'"></div>
 <script>
 let ch, tab = 'ficha', timer, log = [], last = null, dn = 1, dm = 0;
 const $ = s => document.querySelector(s);
@@ -42,7 +52,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;
 const C = () => ch;
 const blank = name => ({name,cls:'',lvl:1,hp:10,hpMax:10,ac:10,
   coins:{pc:0,pp:0,pe:0,po:0,ppt:0},stats:{FUE:10,DES:10,CON:10,INT:10,SAB:10,CAR:10},
-  items:[],counters:[],notes:''});
+  items:[],counters:[],notes:'',sv:{},sk:{},spd:9});
 const mod = v => Math.floor((v - 10) / 2);
 const sgn = n => (n >= 0 ? '+' : '') + n;
 
@@ -70,9 +80,10 @@ async function auth(kind) {
   } catch (e) { authView(e.message); }
 }
 function logout() { localStorage.removeItem('tk'); ch = null; authView(); }
+const norm = c => { c.sv = c.sv || {}; c.sk = c.sk || {}; if (c.spd == null) c.spd = 9; return c; };
 async function boot() {
   if (!localStorage.tk) return authView();
-  try { ch = (await api('GET', 'char')).char; render(); }
+  try { ch = norm((await api('GET', 'char')).char); render(); }
   catch (e) { e.code === 401 || !localStorage.tk ? authView() : authView(e.message); }
 }
 
@@ -97,28 +108,83 @@ function render() {
   <div class="wrap">${{ ficha, inv, dados, notas }[tab]()}</div>
   <nav>${[['ficha','🧙 Ficha'],['inv','🎒 Inventario'],['dados','🎲 Dados'],['notas','📜 Notas']].map(([k, l]) => `<button class="${tab == k ? 'on' : ''}" onclick="tab='${k}';render()">${l}</button>`).join('')}</nav>`;
 }
+const AB = ['FUE','DES','CON','INT','SAB','CAR'], M = ['○','●','◉'];
+const SK = [['Acrobacias','DES'],['Arcanos','INT'],['Atletismo','FUE'],['Engaño','CAR'],['Historia','INT'],['Interpretación','CAR'],['Intimidación','CAR'],['Investigación','INT'],['Juego de manos','DES'],['Medicina','SAB'],['Naturaleza','INT'],['Percepción','SAB'],['Perspicacia','SAB'],['Persuasión','CAR'],['Religión','INT'],['Sigilo','DES'],['Supervivencia','SAB'],['Trato con animales','SAB']];
+const pb = () => 2 + Math.floor(((+ch.lvl || 1) - 1) / 4);
+function cyc(o, k) { ch[o][k] = ((ch[o][k] || 0) + 1) % (o == 'sv' ? 2 : 3); save(); render(); }
+function rollB(b, l) {
+  const r = d(20);
+  done(r + b, `${l}: d20 [${r}]${sgn(b)}${r == 20 ? ' 🎯 natural' : r == 1 ? ' 💀 pifia' : ''}`);
+}
 function ficha() {
-  const c = ch, n = { pc: 'Cobre', pp: 'Plata', pe: 'Electrum', po: 'Oro', ppt: 'Platino' };
+  const c = ch, P = pb(), n = { pc: 'Cobre', pp: 'Plata', pe: 'Electrum', po: 'Oro', ppt: 'Platino' };
   return `<div class="card"><input value="${esc(c.name)}" oninput="upd('name',this.value)" style="font-size:20px" placeholder="Nombre">
-  <div class="row" style="margin-top:8px"><input value="${esc(c.cls)}" oninput="upd('cls',this.value)" placeholder="Raza / clase"><input class="num" type="number" style="width:80px" value="${c.lvl}" oninput="upd('lvl',+this.value)"></div>
+  <div class="row" style="margin-top:8px"><input value="${esc(c.cls)}" oninput="upd('cls',this.value)" placeholder="Raza / clase"><input class="num" type="number" style="width:80px" value="${c.lvl}" oninput="upd('lvl',+this.value)" onchange="render()"></div>
   <div class="g"><div><div class="lbl">PV</div><input class="num" type="number" value="${c.hp}" oninput="upd('hp',+this.value)"></div>
   <div><div class="lbl">PV máx</div><input class="num" type="number" value="${c.hpMax}" oninput="upd('hpMax',+this.value)"></div>
   <div><div class="lbl">CA</div><input class="num" type="number" value="${c.ac}" oninput="upd('ac',+this.value)"></div></div>
-  <div class="row" style="margin-top:8px"><button onclick="upd('hp',ch.hp-1,render)">−1 PV</button><button onclick="upd('hp',ch.hp+1,render)">+1 PV</button><button onclick="upd('hp',ch.hpMax,render)">Descanso</button></div></div>
+  <div class="row" style="margin-top:8px"><button onclick="upd('hp',ch.hp-1,render)">−1 PV</button><button onclick="upd('hp',ch.hp+1,render)">+1 PV</button><button onclick="upd('hp',ch.hpMax,render)">Descanso</button></div>
+  <div class="g"><div><div class="lbl">Competencia</div><div class="num" style="padding:10px;font-size:18px">${sgn(P)}</div></div>
+  <div><div class="lbl">Velocidad (m)</div><input class="num" type="number" value="${c.spd}" oninput="upd('spd',+this.value)"></div>
+  <div><div class="lbl">Iniciativa</div><button style="width:100%" onclick="rollB(mod(ch.stats.DES),'Iniciativa')">${sgn(mod(c.stats.DES))} 🎲</button></div></div></div>
   <div class="card"><h2>Monedas</h2>${Object.keys(n).map(k => `<div class="row"><span style="width:70px">${n[k]}</span>
   <button class="sm" onclick="bump('coins','${k}',-1)">−</button><input class="num" type="number" value="${c.coins[k]}" oninput="updIn('coins','${k}',+this.value)">
   <button class="sm" onclick="bump('coins','${k}',1)">+</button><button class="sm" onclick="bump('coins','${k}',10)">+10</button></div>`).join('')}</div>
-  <div class="card"><h2>Atributos</h2><div class="g">${Object.keys(c.stats).map(k => `<div><div class="lbl">${k}</div>
-  <input class="num" type="number" value="${c.stats[k]}" oninput="updIn('stats','${k}',+this.value);this.nextElementSibling.textContent=sgn(mod(+this.value))"><div class="mod">${sgn(mod(c.stats[k]))}</div></div>`).join('')}</div></div>`;
+  <div class="card"><h2>Atributos</h2><div class="g">${AB.map(k => `<div><div class="lbl">${k}</div>
+  <input class="num" type="number" value="${c.stats[k]}" oninput="updIn('stats','${k}',+this.value)" onchange="render()"><div class="mod">${sgn(mod(c.stats[k]))}</div></div>`).join('')}</div></div>
+  <div class="card"><h2>Salvaciones</h2><div class="lbl" style="margin-bottom:8px">Toca ○ para marcar competencia · toca el valor para tirar</div><div class="g2">${AB.map(k => { const b = mod(c.stats[k]) + (c.sv[k] ? P : 0);
+  return `<div class="row" style="margin:0"><button class="sm" onclick="cyc('sv','${k}')">${M[c.sv[k] || 0]}</button><button style="flex:1" onclick="rollB(${b},'Salvación ${k}')">${k} ${sgn(b)}</button></div>`; }).join('')}</div></div>
+  <div class="card"><h2>Habilidades</h2><div class="lbl" style="margin-bottom:8px">○ nada · ● competente · ◉ pericia</div>${SK.map(([nm, a], i) => { const b = mod(c.stats[a]) + (c.sk[i] || 0) * P;
+  return `<div class="row"><button class="sm" onclick="cyc('sk',${i})">${M[c.sk[i] || 0]}</button><span style="flex:1">${nm} <span class="lbl">${a}</span></span><button style="width:64px" onclick="rollB(${b},'${nm}')">${sgn(b)}</button></div>`; }).join('')}</div>`;
+}
+
+// ---------- Inventario ----------
+const opn = new Set();
+const PRE = [
+  { n: 'Poción de curación', c: 'Equipo', s: 'Poción' },
+  { n: 'Ácido', c: 'Equipo', s: 'Equipo de aventureros' },
+  { n: 'Armadura de cuero', c: 'Equipo', s: 'Armadura (ligera)', st: 'CA 11 + DES' },
+  { n: 'Daga', c: 'Equipo', s: 'Arma (cuerpo a cuerpo sencilla)', st: 'Daño perforante · FUE o DES', dm: '1d4', ab: 'DES' },
+  { n: 'Espada corta +1', c: 'Objeto mágico', s: 'Arma (cuerpo a cuerpo marcial)', st: 'Daño perforante · FUE o DES · +1', dm: '1d6', ab: 'DES', bo: 1 }
+];
+const setI = (i, k, v) => { ch.items[i][k] = v; save(); };
+const togI = (i, k) => { ch.items[i][k] = !ch.items[i][k]; save(); render(); };
+function addPre(v) { ch.items.push({ q: 1, ...PRE[v] }); save(); render(); }
+const itMod = it => (it.ab ? mod(ch.stats[it.ab]) : 0) + (+it.bo || 0);
+function atk(i) { const it = ch.items[i]; rollB(itMod(it) + (it.pf ? pb() : 0), 'Ataque ' + (it.n || '')); }
+function dmgR(i) {
+  const it = ch.items[i], x = String(it.dm || '').replace(/\s/g, '').match(/^(\d*)d(\d+)([+-]\d+)?$/i);
+  if (!x) return alert('Daño con formato 1d6 o 2d4+1');
+  roll(+x[1] || 1, +x[2], (+x[3] || 0) + itMod(it), 'Daño ' + (it.n || ''));
+}
+function card(it, i) {
+  const mg = /m[áa]g/i.test(it.c || '');
+  if (opn.has(i)) return `<div class="ic ${mg ? 'mg' : ''}"><div class="cb">
+  <input value="${esc(it.n)}" placeholder="Nombre" oninput="setI(${i},'n',this.value)">
+  <div class="row" style="margin-top:6px"><input list="cats" value="${esc(it.c)}" placeholder="Categoría" oninput="setI(${i},'c',this.value)"><input value="${esc(it.s)}" placeholder="Tipo (Arma, Poción…)" oninput="setI(${i},'s',this.value)"></div>
+  <input value="${esc(it.st)}" placeholder="Stats: CA 11 + DES · Daño perforante…" oninput="setI(${i},'st',this.value)">
+  <div class="row" style="margin-top:6px"><input value="${esc(it.dm)}" placeholder="Daño 1d6" oninput="setI(${i},'dm',this.value)">
+  <select style="width:84px;flex:none" onchange="setI(${i},'ab',this.value)"><option value="">Sin atrib.</option>${AB.map(a => `<option ${it.ab == a ? 'selected' : ''}>${a}</option>`).join('')}</select>
+  <input class="num" type="number" style="width:64px;flex:none" value="${it.bo || 0}" oninput="setI(${i},'bo',+this.value)"></div>
+  <div class="row"><button onclick="togI(${i},'pf')">${it.pf ? '✔' : '✖'} Competente (ataque)</button></div>
+  <input value="${esc(it.note)}" placeholder="Notas" oninput="setI(${i},'note',this.value)">
+  <div class="row" style="margin:8px 0 0"><button class="p" onclick="opn.delete(${i});render()">Listo</button>
+  <button class="d" onclick="if(confirm('¿Borrar?')){ch.items.splice(${i},1);opn.clear();save();render()}">Borrar</button></div></div><div class="ft">${esc(it.c || 'Objeto')}</div></div>`;
+  return `<div class="ic ${mg ? 'mg' : ''}"><div class="cb">
+  <div class="row" style="margin:0"><b style="flex:1;font-size:17px">${esc(it.n) || '(sin nombre)'}</b><button class="sm" title="Equipado" onclick="togI(${i},'eq')">${it.eq ? '🛡️' : '▫️'}</button></div>
+  ${it.s ? `<div class="mod" style="text-align:left">${esc(it.s)}</div>` : ''}
+  ${it.st ? `<div style="color:var(--acc);font-weight:600;margin:4px 0">${esc(it.st)}</div>` : ''}
+  ${it.note ? `<div class="mod" style="text-align:left">${esc(it.note)}</div>` : ''}
+  <div class="row" style="margin:8px 0 0;flex-wrap:wrap"><button class="sm" onclick="iq(${i},-1)">−</button><b style="min-width:26px;text-align:center">${it.q}</b><button class="sm" onclick="iq(${i},1)">+</button>
+  ${it.dm ? `<button onclick="atk(${i})">⚔️ ${sgn(itMod(it) + (it.pf ? pb() : 0))}</button><button onclick="dmgR(${i})">🎲 ${esc(it.dm)}${itMod(it) ? sgn(itMod(it)) : ''}</button>` : ''}
+  <button class="sm" onclick="opn.add(${i});render()">✏️</button></div></div><div class="ft">${esc(it.c || 'Objeto')}</div></div>`;
 }
 function inv() {
   const c = ch;
-  return `<div class="card"><h2>Objetos</h2>${c.items.map((it, i) => `<div style="margin-bottom:10px"><div class="row" style="margin:0 0 4px">
-  <input value="${esc(it.n)}" placeholder="Objeto" oninput="ch.items[${i}].n=this.value;save()">
-  <button class="sm" onclick="iq(${i},-1)">−</button><input class="num" style="width:56px;flex:none" type="number" value="${it.q}" oninput="ch.items[${i}].q=+this.value;save()"><button class="sm" onclick="iq(${i},1)">+</button>
-  <button class="sm d" onclick="ch.items.splice(${i},1);save();render()">✕</button></div>
-  <input value="${esc(it.note)}" placeholder="Notas (peso, efecto, daño…)" oninput="ch.items[${i}].note=this.value;save()"></div>`).join('')}
-  <button class="p" onclick="ch.items.push({n:'',q:1,note:''});save();render()">＋ Añadir objeto</button></div>
+  return `<datalist id="cats"><option value="Equipo"><option value="Objeto mágico"><option value="Arma"><option value="Armadura"></datalist>
+  <div class="card"><h2>Objetos</h2>${c.items.map(card).join('')}
+  <div class="row"><button class="p" onclick="ch.items.push({n:'',q:1,c:'Equipo'});opn.add(ch.items.length-1);save();render()">＋ Objeto</button>
+  <select onchange="if(this.value!=='')addPre(+this.value)"><option value="">＋ De la caja…</option>${PRE.map((p, i) => `<option value="${i}">${p.n}</option>`).join('')}</select></div></div>
   <div class="card"><h2>Contadores libres</h2><div class="lbl" style="margin-bottom:8px">Pociones, espacios de conjuro, flechas, lo que quieras</div>
   ${c.counters.map((k, i) => `<div class="row"><input value="${esc(k.n)}" placeholder="Nombre" oninput="ch.counters[${i}].n=this.value;save()">
   <button class="sm" onclick="cq(${i},-1)">−</button><input class="num" style="width:56px;flex:none" type="number" value="${k.v}" oninput="ch.counters[${i}].v=+this.value;save()"><button class="sm" onclick="cq(${i},1)">+</button>
@@ -143,11 +209,17 @@ function dados() {
   <div class="card"><h2>Historial</h2>${log.map(l => `<span class="chip">${esc(l)}</span>`).join('') || '<span class="mod">Vacío</span>'}</div>`;
 }
 const d = s => 1 + Math.floor(Math.random() * s);
-function done(total, txt) { last = { total, txt }; log.unshift(`${total} · ${txt}`); log = log.slice(0, 30); render(); }
-function roll(n, s, m) {
+let tt;
+function done(total, txt) {
+  last = { total, txt }; log.unshift(`${total} · ${txt}`); log = log.slice(0, 30);
+  const t = $('#toast'); t.innerHTML = `<b>${total}</b><span>${esc(txt)}</span>`; t.style.display = 'block';
+  clearTimeout(tt); tt = setTimeout(() => t.style.display = 'none', 4500);
+  if (tab == 'dados') render();
+}
+function roll(n, s, m, label) {
   n = Math.min(Math.max(n, 1), 100);
   const r = Array.from({ length: n }, () => d(s)), t = r.reduce((a, b) => a + b, 0) + m;
-  done(t, `${n}d${s}${m ? sgn(m) : ''} [${r.join(',')}]`);
+  done(t, `${label ? label + ': ' : ''}${n}d${s}${m ? sgn(m) : ''} [${r.join(',')}]`);
 }
 function adv(k) {
   const a = d(20), b = d(20), p = k > 0 ? Math.max(a, b) : Math.min(a, b);
