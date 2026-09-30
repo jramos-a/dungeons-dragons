@@ -40,6 +40,7 @@ select{width:100%}
 .ic.mg{border-color:#5b4bb0}
 #toast{display:none;position:fixed;left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));max-width:536px;margin:auto;background:var(--acc);color:#1a1420;border-radius:12px;padding:10px 14px;font-size:14px;z-index:9;box-shadow:0 4px 16px #0008}
 #toast b{font-size:26px;margin-right:8px;font-family:Georgia,serif}
+nav button{font-size:11px;padding:9px 0;line-height:1.35}
 </style>
 </head>
 <body>
@@ -80,7 +81,9 @@ async function auth(kind) {
   } catch (e) { authView(e.message); }
 }
 function logout() { localStorage.removeItem('tk'); ch = null; authView(); }
-const norm = c => { c.sv = c.sv || {}; c.sk = c.sk || {}; if (c.spd == null) c.spd = 9; return c; };
+const ZN = ['Camino', 'Bosque', 'Cuevas', 'Fuerte'];
+const norm = c => { for (const k of ['sv','sk','svv','skv']) c[k] = c[k] || {}; c.cs = c.cs || []; c.rs = c.rs || [];
+  c.zones = c.zones || ZN.map(n => ({ n, t: '' })); if (c.spd == null) c.spd = 9; return c; };
 async function boot() {
   if (!localStorage.tk) return authView();
   try { ch = norm((await api('GET', 'char')).char); render(); }
@@ -105,37 +108,63 @@ function render() {
   $('#app').innerHTML = `
   <div class="top"><b style="flex:1;font-family:Georgia,serif;color:var(--acc);font-size:20px">${esc(ch.name)}</b>
   <span id="st"></span><button onclick="logout()">Salir</button></div>
-  <div class="wrap">${{ ficha, inv, dados, notas }[tab]()}</div>
-  <nav>${[['ficha','🧙 Ficha'],['inv','🎒 Inventario'],['dados','🎲 Dados'],['notas','📜 Notas']].map(([k, l]) => `<button class="${tab == k ? 'on' : ''}" onclick="tab='${k}';render()">${l}</button>`).join('')}</nav>`;
+  <div class="wrap">${{ ficha, inv, combate, dados, mapa, notas }[tab]()}</div>
+  <nav>${[['ficha','🧙','Ficha'],['inv','🎒','Mochila'],['combate','⚔️','Combate'],['dados','🎲','Dados'],['mapa','🗺️','Mapa'],['notas','📜','Notas']].map(([k, e, l]) => `<button class="${tab == k ? 'on' : ''}" onclick="tab='${k}';render()">${e}<br>${l}</button>`).join('')}</nav>`;
 }
 const AB = ['FUE','DES','CON','INT','SAB','CAR'], M = ['○','●','◉'];
 const SK = [['Acrobacias','DES'],['Arcanos','INT'],['Atletismo','FUE'],['Engaño','CAR'],['Historia','INT'],['Interpretación','CAR'],['Intimidación','CAR'],['Investigación','INT'],['Juego de manos','DES'],['Medicina','SAB'],['Naturaleza','INT'],['Percepción','SAB'],['Perspicacia','SAB'],['Persuasión','CAR'],['Religión','INT'],['Sigilo','DES'],['Supervivencia','SAB'],['Trato con animales','SAB']];
 const pb = () => 2 + Math.floor(((+ch.lvl || 1) - 1) / 4);
+const setMod = (k, m) => { ch.stats[k] = 10 + 2 * m; save(); render(); };
 function cyc(o, k) { ch[o][k] = ((ch[o][k] || 0) + 1) % (o == 'sv' ? 2 : 3); save(); render(); }
+function ovr(o, k, v) { if (v === '') delete ch[o][k]; else ch[o][k] = +v; save(); render(); }
 function rollB(b, l) {
   const r = d(20);
   done(r + b, `${l}: d20 [${r}]${sgn(b)}${r == 20 ? ' 🎯 natural' : r == 1 ? ' 💀 pifia' : ''}`);
 }
+const parseD = s => { const x = String(s || '').replace(/\s/g, '').match(/^(\d*)d(\d+)([+-]\d+)?$/i); return x && [+x[1] || 1, +x[2], +x[3] || 0]; };
+function rr(i) { const p = parseD(ch.rs[i].dm); if (!p) return alert('Formato: 1d10+2'); roll(p[0], p[1], p[2], ch.rs[i].n); }
+function tplG() {
+  if (!confirm('Esto reemplaza clase, atributos, competencias, objetos y rasgos actuales. ¿Seguir?')) return;
+  Object.assign(ch, { cls: 'Guerrero', lvl: 2, sp: 'Humana', bg: 'Soldado', spd: 9, ac: 19, stats: { FUE: 16, DES: 12, CON: 14, INT: 14, SAB: 8, CAR: 10 },
+    sv: { FUE: 1, CON: 1 }, sk: { 2: 1, 6: 1 }, svv: {}, skv: {}, cs: [],
+    items: PRE.slice(5).map(p => ({ q: 1, ...p })),
+    rs: [{ n: 'Tomar aliento', t: 'Acción adicional: gastas 1 ficha de poder para recuperar 1d10 + 2 puntos de golpe.', dm: '1d10+2', u: 2, m: 2 },
+      { n: 'Acción súbita', t: 'En tu turno, gastas 1 ficha de poder para hacer una acción más (salvo la de magia).', u: 1, m: 1 },
+      { n: 'Soldado (trasfondo)', t: 'Una vez por turno, al acertar con un arma, puedes tirar dos veces los dados de daño y usar el que prefieras.' }] });
+  save(); render();
+}
 function ficha() {
   const c = ch, P = pb(), n = { pc: 'Cobre', pp: 'Plata', pe: 'Electrum', po: 'Oro', ppt: 'Platino' };
+  const row = (o, k, dot, lbl, b) => `<div class="row"><button class="sm" onclick="cyc('${o}','${k}')">${M[dot]}</button><button style="flex:1;text-align:left" onclick="rollB(${b},'${lbl}')">${lbl}</button>
+  <input class="num" type="number" style="width:60px;flex:none${c[o + 'v'][k] != null ? ';color:var(--acc)' : ''}" value="${b}" onchange="ovr('${o}v','${k}',this.value)">${c[o + 'v'][k] != null ? `<button class="sm" onclick="ovr('${o}v','${k}','')">↺</button>` : ''}</div>`;
   return `<div class="card"><input value="${esc(c.name)}" oninput="upd('name',this.value)" style="font-size:20px" placeholder="Nombre">
-  <div class="row" style="margin-top:8px"><input value="${esc(c.cls)}" oninput="upd('cls',this.value)" placeholder="Raza / clase"><input class="num" type="number" style="width:80px" value="${c.lvl}" oninput="upd('lvl',+this.value)" onchange="render()"></div>
+  <div class="row" style="margin-top:8px"><input value="${esc(c.cls)}" oninput="upd('cls',this.value)" placeholder="Clase"><input class="num" type="number" style="width:80px" value="${c.lvl}" oninput="upd('lvl',+this.value)" onchange="render()"></div>
+  <div class="row"><input value="${esc(c.sp)}" oninput="upd('sp',this.value)" placeholder="Especie"><input value="${esc(c.bg)}" oninput="upd('bg',this.value)" placeholder="Trasfondo"></div>
   <div class="g"><div><div class="lbl">PV</div><input class="num" type="number" value="${c.hp}" oninput="upd('hp',+this.value)"></div>
   <div><div class="lbl">PV máx</div><input class="num" type="number" value="${c.hpMax}" oninput="upd('hpMax',+this.value)"></div>
   <div><div class="lbl">CA</div><input class="num" type="number" value="${c.ac}" oninput="upd('ac',+this.value)"></div></div>
   <div class="row" style="margin-top:8px"><button onclick="upd('hp',ch.hp-1,render)">−1 PV</button><button onclick="upd('hp',ch.hp+1,render)">+1 PV</button><button onclick="upd('hp',ch.hpMax,render)">Descanso</button></div>
   <div class="g"><div><div class="lbl">Competencia</div><div class="num" style="padding:10px;font-size:18px">${sgn(P)}</div></div>
   <div><div class="lbl">Velocidad (m)</div><input class="num" type="number" value="${c.spd}" oninput="upd('spd',+this.value)"></div>
-  <div><div class="lbl">Iniciativa</div><button style="width:100%" onclick="rollB(mod(ch.stats.DES),'Iniciativa')">${sgn(mod(c.stats.DES))} 🎲</button></div></div></div>
+  <div><div class="lbl">Iniciativa</div><button style="width:100%" onclick="rollB(mod(ch.stats.DES),'Iniciativa')">${sgn(mod(c.stats.DES))} 🎲</button></div></div>
+  <div class="row" style="margin-top:8px"><button onclick="upd('insp',!ch.insp,render)">${c.insp ? '✨ Inspiración heroica: SÍ' : '▫️ Inspiración heroica: no'}</button></div></div>
   <div class="card"><h2>Monedas</h2>${Object.keys(n).map(k => `<div class="row"><span style="width:70px">${n[k]}</span>
   <button class="sm" onclick="bump('coins','${k}',-1)">−</button><input class="num" type="number" value="${c.coins[k]}" oninput="updIn('coins','${k}',+this.value)">
   <button class="sm" onclick="bump('coins','${k}',1)">+</button><button class="sm" onclick="bump('coins','${k}',10)">+10</button></div>`).join('')}</div>
-  <div class="card"><h2>Atributos</h2><div class="g">${AB.map(k => `<div><div class="lbl">${k}</div>
-  <input class="num" type="number" value="${c.stats[k]}" oninput="updIn('stats','${k}',+this.value)" onchange="render()"><div class="mod">${sgn(mod(c.stats[k]))}</div></div>`).join('')}</div></div>
-  <div class="card"><h2>Salvaciones</h2><div class="lbl" style="margin-bottom:8px">Toca ○ para marcar competencia · toca el valor para tirar</div><div class="g2">${AB.map(k => { const b = mod(c.stats[k]) + (c.sv[k] ? P : 0);
-  return `<div class="row" style="margin:0"><button class="sm" onclick="cyc('sv','${k}')">${M[c.sv[k] || 0]}</button><button style="flex:1" onclick="rollB(${b},'Salvación ${k}')">${k} ${sgn(b)}</button></div>`; }).join('')}</div></div>
-  <div class="card"><h2>Habilidades</h2><div class="lbl" style="margin-bottom:8px">○ nada · ● competente · ◉ pericia</div>${SK.map(([nm, a], i) => { const b = mod(c.stats[a]) + (c.sk[i] || 0) * P;
-  return `<div class="row"><button class="sm" onclick="cyc('sk',${i})">${M[c.sk[i] || 0]}</button><span style="flex:1">${nm} <span class="lbl">${a}</span></span><button style="width:64px" onclick="rollB(${b},'${nm}')">${sgn(b)}</button></div>`; }).join('')}</div>`;
+  <div class="card"><h2>Atributos</h2><div class="lbl" style="margin-bottom:8px">Arriba la puntuación, abajo el modificador. Edita el que tengas en tu tablero.</div><div class="g">${AB.map(k => `<div><div class="lbl">${k}</div>
+  <input class="num" type="number" value="${c.stats[k]}" oninput="updIn('stats','${k}',+this.value)" onchange="render()">
+  <input class="num" type="number" style="margin-top:4px;color:var(--acc)" value="${mod(c.stats[k])}" onchange="setMod('${k}',+this.value)"></div>`).join('')}</div></div>
+  <div class="card"><h2>Salvaciones</h2><div class="lbl" style="margin-bottom:8px">○ competencia · toca el nombre para tirar · el número se puede cambiar (↺ vuelve al automático)</div>${AB.map(k => row('sv', k, c.sv[k] || 0, 'Salvación ' + k, c.svv[k] ?? mod(c.stats[k]) + (c.sv[k] ? P : 0))).join('')}</div>
+  <div class="card"><h2>Habilidades</h2><div class="lbl" style="margin-bottom:8px">○ nada · ● competente · ◉ pericia · el número es editable</div>
+  ${SK.map(([nm, a], i) => row('sk', i, c.sk[i] || 0, nm, c.skv[i] ?? mod(c.stats[a]) + (c.sk[i] || 0) * P)).join('')}
+  ${c.cs.map((h, i) => `<div class="row"><input value="${esc(h.n)}" placeholder="Habilidad propia" oninput="ch.cs[${i}].n=this.value;save()"><input class="num" type="number" style="width:60px;flex:none" value="${h.v || 0}" oninput="ch.cs[${i}].v=+this.value;save()"><button class="sm" onclick="rollB(ch.cs[${i}].v||0,ch.cs[${i}].n||'Habilidad')">🎲</button><button class="sm d" onclick="ch.cs.splice(${i},1);save();render()">✕</button></div>`).join('')}
+  <button class="p" onclick="ch.cs.push({n:'',v:0});save();render()">＋ Habilidad propia</button></div>
+  <div class="card"><h2>Rasgos y poderes</h2>${c.rs.map((r, i) => `<div class="ic"><div class="cb"><input value="${esc(r.n)}" placeholder="Rasgo" oninput="ch.rs[${i}].n=this.value;save()">
+  <textarea style="min-height:70px;margin-top:6px" placeholder="Descripción" oninput="ch.rs[${i}].t=this.value;save()">${esc(r.t)}</textarea>
+  <div class="row" style="margin:6px 0 0"><input class="num" type="number" style="width:52px" value="${r.u || 0}" oninput="ch.rs[${i}].u=+this.value;save()">/<input class="num" type="number" style="width:52px" value="${r.m || 0}" oninput="ch.rs[${i}].m=+this.value;save()">
+  <input placeholder="1d10+2" value="${esc(r.dm)}" oninput="ch.rs[${i}].dm=this.value;save()"><button class="sm" onclick="rr(${i})">🎲</button><button class="sm d" onclick="ch.rs.splice(${i},1);save();render()">✕</button></div></div></div>`).join('')}
+  <div class="row"><button class="p" onclick="ch.rs.push({n:'',t:'',u:0,m:0});save();render()">＋ Rasgo</button><button onclick="ch.rs.forEach(r=>r.u=r.m);save();render()">Recuperar usos</button></div></div>
+  <div class="card"><button onclick="tplG()">Cargar plantilla Guerrero de la caja</button></div>`;
 }
 
 // ---------- Inventario ----------
@@ -145,7 +174,13 @@ const PRE = [
   { n: 'Ácido', c: 'Equipo', s: 'Equipo de aventureros' },
   { n: 'Armadura de cuero', c: 'Equipo', s: 'Armadura (ligera)', st: 'CA 11 + DES' },
   { n: 'Daga', c: 'Equipo', s: 'Arma (cuerpo a cuerpo sencilla)', st: 'Daño perforante · FUE o DES', dm: '1d4', ab: 'DES' },
-  { n: 'Espada corta +1', c: 'Objeto mágico', s: 'Arma (cuerpo a cuerpo marcial)', st: 'Daño perforante · FUE o DES · +1', dm: '1d6', ab: 'DES', bo: 1 }
+  { n: 'Espada corta +1', c: 'Objeto mágico', s: 'Arma (cuerpo a cuerpo marcial)', st: 'Daño perforante · FUE o DES · +1', dm: '1d6', ab: 'DES', bo: 1 },
+  { n: 'Espadón', c: 'Equipo', s: 'Arma (cuerpo a cuerpo marcial)', st: 'Daño cortante · 2d6 + FUE', dm: '2d6', ab: 'FUE', pf: 1, eq: 1 },
+  { n: 'Farol', c: 'Equipo', s: 'Equipo de aventureros' },
+  { n: 'Armadura de placas +1', c: 'Objeto mágico', s: 'Armadura (pesada)', st: 'CA 19', eq: 1 },
+  { n: 'Antitoxina', c: 'Equipo', s: 'Equipo de aventureros' },
+  { n: 'Túnica de sectario', c: 'Equipo' },
+  { n: 'Cota de mallas', c: 'Equipo', s: 'Armadura (pesada)', st: 'CA 16' }
 ];
 const setI = (i, k, v) => { ch.items[i][k] = v; save(); };
 const togI = (i, k) => { ch.items[i][k] = !ch.items[i][k]; save(); render(); };
@@ -195,6 +230,50 @@ const iq = (i, d) => { ch.items[i].q = (+ch.items[i].q || 0) + d; save(); render
 const cq = (i, d) => { ch.counters[i].v = (+ch.counters[i].v || 0) + d; save(); render(); };
 function notas() {
   return `<div class="card"><h2>Notas</h2><textarea oninput="upd('notes',this.value)" placeholder="Historia, misiones, PNJ, hechizos, lo que sea…">${esc(ch.notes)}</textarea></div>`;
+}
+
+// ---------- Combate ----------
+let tgt = '', advm = 0, cres = null;
+const bat = it => itMod(it) + (it.pf ? pb() : 0);
+function calcDmg(i, crit) {
+  const it = ch.items[i], p = parseD(it.dm);
+  if (!p) { alert('Daño con formato 2d6 o 1d8+1'); return null; }
+  const n = p[0] * (crit ? 2 : 1), r = Array.from({ length: n }, () => d(p[1])), m = p[2] + itMod(it), total = r.reduce((a, b) => a + b, 0) + m;
+  const txt = `${n}d${p[1]} [${r.join(',')}]${m ? sgn(m) : ''}${crit ? ' (crítico)' : ''}`;
+  done(total, `Daño ${it.n || ''}: ${txt}`);
+  return { total, txt };
+}
+function fight(i) {
+  const it = ch.items[i], b = bat(it), r1 = d(20), r2 = advm ? d(20) : null;
+  const r = advm > 0 ? Math.max(r1, r2) : advm < 0 ? Math.min(r1, r2) : r1;
+  const has = String(tgt).trim() !== '', tot = r + b, nat20 = r == 20, nat1 = r == 1;
+  const hit = nat20 || (has && !nat1 && tot >= +tgt);
+  cres = { i, name: it.n || 'Arma', rolls: advm ? [r1, r2] : [r1], r, b, tot, nat20, nat1, has, hit, dmg: null };
+  done(tot, `Ataque ${cres.name}: d20 [${cres.rolls.join(',')}]${sgn(b)}`);
+  if (hit) cres.dmg = calcDmg(i, nat20);
+  render();
+}
+function dmgN(i, crit) { cres.dmg = calcDmg(i, crit || cres.nat20); render(); }
+function combate() {
+  const w = ch.items.map((it, i) => [it, i]).filter(([it]) => it.dm), r = cres;
+  return `<div class="card"><h2>Combate</h2><div class="row"><div style="flex:1"><div class="lbl">CA del enemigo</div><input class="num" type="number" value="${tgt}" oninput="tgt=this.value"></div>
+  <div style="flex:1"><div class="lbl">Tirada</div><select onchange="advm=+this.value"><option value="0" ${!advm ? 'selected' : ''}>Normal</option><option value="1" ${advm > 0 ? 'selected' : ''}>Ventaja</option><option value="-1" ${advm < 0 ? 'selected' : ''}>Desventaja</option></select></div></div>
+  ${w.length ? w.map(([it, i]) => `<div class="row"><div style="flex:1"><b>${esc(it.n)}</b><div class="mod" style="text-align:left">Ataque d20${sgn(bat(it))} · Daño ${esc(it.dm)}${itMod(it) ? sgn(itMod(it)) : ''}</div></div><button class="p" onclick="fight(${i})">⚔️ Atacar</button></div>`).join('')
+  : '<div class="mod">Añade armas en la Mochila con daño (ej. 2d6) y atributo (FUE/DES).</div>'}</div>
+  ${r ? `<div class="card"><h2>${esc(r.name)}</h2><div>⚔️ d20 [${r.rolls.join(', ')}]${r.rolls.length > 1 ? ' → ' + r.r : ''} ${sgn(r.b)} = <b style="font-size:22px">${r.tot}</b>${r.has ? ' vs CA ' + esc(tgt) : ''}</div>
+  <div style="margin:6px 0"><b>${r.nat20 ? '🎯 ¡CRÍTICO!' : r.nat1 ? '💀 Pifia' : r.has ? (r.hit ? '✅ ¡Impacto!' : '❌ Fallo') : ''}</b></div>
+  ${r.dmg ? `<div>💥 ${esc(r.dmg.txt)} = <b style="font-size:26px;color:var(--acc)">${r.dmg.total}</b></div>` : (r.nat1 || (r.has && !r.hit)) ? '' : `<div class="row"><button class="p" onclick="dmgN(${r.i},false)">💥 Tirar daño</button><button onclick="dmgN(${r.i},true)">Crítico</button></div>`}</div>` : ''}`;
+}
+
+// ---------- Mapa ----------
+function mapa() {
+  const c = ch, z = c.zones, k = Math.min(c.zi || 0, z.length - 1);
+  return `<div class="card"><h2>Zonas</h2>${z.map((x, i) => `<button class="chip" style="${i == k ? 'border-color:var(--acc);color:var(--acc)' : ''}" onclick="ch.zi=${i};save();render()">${c.here === i ? '📍 ' : ''}${esc(x.n)}</button>`).join('')}
+  <button class="chip" onclick="ch.zones.push({n:'Nueva zona',t:''});ch.zi=ch.zones.length-1;save();render()">＋</button></div>
+  ${z[k] ? `<div class="card"><input value="${esc(z[k].n)}" oninput="ch.zones[${k}].n=this.value;save()"><textarea style="margin-top:8px" placeholder="Notas: enemigos, tesoros, pistas, PNJ…" oninput="ch.zones[${k}].t=this.value;save()">${esc(z[k].t)}</textarea>
+  <div class="row" style="margin-top:8px"><button class="p" onclick="ch.here=${k};save();render()">📍 Estamos aquí</button><button class="d" onclick="if(confirm('¿Borrar zona?')){ch.zones.splice(${k},1);ch.zi=0;ch.here=null;save();render()}">Borrar</button></div></div>` : ''}
+  <div class="card"><h2>Distancias</h2><div class="mod" style="text-align:left">1 casilla = 1,5 m · tu velocidad (${c.spd} m) = ${Math.floor(c.spd / 1.5)} casillas</div>
+  <div class="row" style="margin-top:8px"><input type="number" placeholder="Casillas" oninput="$('#mt').textContent=(+this.value*1.5)+' m'"><b id="mt" style="min-width:80px">0 m</b></div></div>`;
 }
 
 // ---------- Dados ----------
